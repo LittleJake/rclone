@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/rclone/rclone/fs"
 	"github.com/rclone/rclone/fs/fserrors"
@@ -60,7 +61,7 @@ func (f *Fs) Upload(ctx context.Context, in io.Reader, size int64, contentType, 
 	if f.opt.KeepRevisionForever {
 		params.Set("keepRevisionForever", "true")
 	}
-	urls := "https://www.googleapis.com/upload/drive/v3/files"
+	urls := f.opt.UploadURL
 	method := "POST"
 	if fileID != "" {
 		params.Set("setModifiedDate", "true")
@@ -99,7 +100,8 @@ func (f *Fs) Upload(ctx context.Context, in io.Reader, size int64, contentType, 
 	if err != nil {
 		return nil, err
 	}
-	loc := res.Header.Get("Location")
+	loc := strings.Replace(res.Header.Get("Location"),
+		"https://www.googleapis.com/upload/drive/v3/files", f.opt.UploadURL, 1)
 	rx := &resumableUpload{
 		f:             f,
 		remote:        remote,

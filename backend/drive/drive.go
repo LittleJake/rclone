@@ -655,12 +655,19 @@ having trouble with like many empty directories.
 OAuth Auth URL for Google Drive only.`,
 			Advanced: true,
 		}, {
-			Name: "token_url",
+			Name: "drive_token_url",
 			Help: `Google Token URL
 
 OAuth Token URL for Google Drive only.`,
 			Advanced: true,
 			Default:  "",
+		}, {
+			Name: "upload_url",
+			Help: `Google Upload API URL
+
+Google Drive Upload API URL.`,
+			Advanced: true,
+			Default:  "https://www.googleapis.com/upload/drive/v3/files",
 		}, {
 			Name:     "api_base_path",
 			Help:     `Google Drive api endpoint base URL.`,
@@ -751,6 +758,7 @@ type Options struct {
 	EnvAuth                   bool                 `config:"env_auth"`
 	AuthURL                   string               `config:"auth_url"`
 	TokenURL                  string               `config:"token_url"`
+	UploadURL                 string               `config:"upload_url"`
 	ApiBasePath               string               `config:"api_base_path"`
 	ApiV2BasePath             string               `config:"api_v2_base_path"`
 }
