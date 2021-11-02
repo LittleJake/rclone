@@ -197,6 +197,14 @@ func init() {
 				// Fill in the scopes
 				driveConfig.Scopes = driveScopes(opt.Scope)
 
+				//Set Auth and Token URL
+				if opt.AuthURL != "" {
+					driveConfig.Endpoint.AuthURL = opt.AuthURL
+				}
+				if opt.TokenURL != "" {
+					driveConfig.Endpoint.TokenURL = opt.TokenURL
+				}
+
 				// Set the root_folder_id if using drive.appfolder
 				if driveScopesContainsAppFolder(driveConfig.Scopes) {
 					m.Set("root_folder_id", "appDataFolder")
@@ -579,7 +587,7 @@ Google don't document so it may break in the future.
 			Advanced: true,
 		}, {
 			Name: "skip_shortcuts",
-			Help: `If set skip shortcut files.
+			Help: `If set skip shortcut files
 
 Normally rclone dereferences shortcut files making them appear as if
 they are the original file (see [the shortcuts section](#shortcuts)).
@@ -639,6 +647,30 @@ having trouble with like many empty directories.
 `,
 			Advanced: true,
 			Default:  true,
+		}, {
+			Name:    "auth_url",
+			Default: "",
+			Help: `Google Auth URL
+
+OAuth Auth URL for Google Drive only.`,
+			Advanced: true,
+		}, {
+			Name: "token_url",
+			Help: `Google Token URL
+
+OAuth Token URL for Google Drive only.`,
+			Advanced: true,
+			Default:  "",
+		}, {
+			Name:     "api_base_path",
+			Help:     `Google Drive api endpoint base URL.`,
+			Advanced: true,
+			Default:  "",
+		}, {
+			Name:     "api_v2_base_path",
+			Help:     `Google Drive apiv2 endpoint base URL.`,
+			Advanced: true,
+			Default:  "",
 		}, {
 			Name:     config.ConfigEncoding,
 			Help:     config.ConfigEncodingHelp,
@@ -717,6 +749,10 @@ type Options struct {
 	FastListBugFix            bool                 `config:"fast_list_bug_fix"`
 	Enc                       encoder.MultiEncoder `config:"encoding"`
 	EnvAuth                   bool                 `config:"env_auth"`
+	AuthURL                   string               `config:"auth_url"`
+	TokenURL                  string               `config:"token_url"`
+	ApiBasePath               string               `config:"api_base_path"`
+	ApiV2BasePath             string               `config:"api_v2_base_path"`
 }
 
 // Fs represents a remote drive server
@@ -1290,12 +1326,18 @@ func newFs(ctx context.Context, name, path string, m configmap.Mapper) (*Fs, err
 	// Create a new authorized Drive client.
 	f.client = oAuthClient
 	f.svc, err = drive.NewService(context.Background(), option.WithHTTPClient(f.client))
+	if f.opt.ApiBasePath != "" {
+		f.svc.BasePath = f.opt.ApiBasePath
+	}
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create Drive client: %w", err)
 	}
 
 	if f.opt.V2DownloadMinSize >= 0 {
 		f.v2Svc, err = drive_v2.NewService(context.Background(), option.WithHTTPClient(f.client))
+		if f.opt.ApiV2BasePath != "" {
+			f.v2Svc.BasePath = f.opt.ApiV2BasePath
+		}
 		if err != nil {
 			return nil, fmt.Errorf("couldn't create Drive v2 client: %w", err)
 		}
@@ -3082,11 +3124,17 @@ func (f *Fs) changeServiceAccountFile(ctx context.Context, file string) (err err
 	}
 	f.client = oAuthClient
 	f.svc, err = drive.NewService(context.Background(), option.WithHTTPClient(f.client))
+	if f.opt.ApiBasePath != "" {
+		f.svc.BasePath = f.opt.ApiBasePath
+	}
 	if err != nil {
 		return fmt.Errorf("couldn't create Drive client: %w", err)
 	}
 	if f.opt.V2DownloadMinSize >= 0 {
 		f.v2Svc, err = drive_v2.NewService(context.Background(), option.WithHTTPClient(f.client))
+		if f.opt.ApiV2BasePath != "" {
+			f.svc.BasePath = f.opt.ApiV2BasePath
+		}
 		if err != nil {
 			return fmt.Errorf("couldn't create Drive v2 client: %w", err)
 		}
