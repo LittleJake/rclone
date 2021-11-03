@@ -105,6 +105,15 @@ func init() {
 				} else {
 					oauthConfig.Scopes[scopeAccess] = scopeReadWrite
 				}
+
+				//Set Auth and Token URL
+				if opt.AuthURL != "" {
+					oauthConfig.Endpoint.AuthURL = opt.AuthURL
+				}
+				if opt.TokenURL != "" {
+					oauthConfig.Endpoint.TokenURL = opt.TokenURL
+				}
+
 				return oauthutil.ConfigOut("warning", &oauthutil.Options{
 					OAuth2Config: oauthConfig,
 				})
@@ -161,6 +170,25 @@ Without this flag, archived media will not be visible in directory
 listings and won't be transferred.`,
 			Advanced: true,
 		}, {
+			Name:    "photo_auth_url",
+			Default: "",
+			Help: `Google Auth URL
+
+OAuth Auth URL for Google Drive only.`,
+			Advanced: true,
+		}, {
+			Name: "photo_token_url",
+			Help: `Google Token URL
+
+OAuth Token URL for Google Drive only.`,
+			Advanced: true,
+			Default:  "",
+		}, {
+			Name:     "api_root_path",
+			Help:     `Google Photo api endpoint root URL.`,
+			Advanced: true,
+			Default:  "",
+		}, {
 			Name:     config.ConfigEncoding,
 			Help:     config.ConfigEncodingHelp,
 			Advanced: true,
@@ -181,6 +209,9 @@ type Options struct {
 	BatchMode       string               `config:"batch_mode"`
 	BatchSize       int                  `config:"batch_size"`
 	BatchTimeout    fs.Duration          `config:"batch_timeout"`
+	AuthURL         string               `config:"photo_auth_url"`
+	TokenURL        string               `config:"photo_token_url"`
+	RootURL         string               `config:"api_root_path"`
 }
 
 // Fs represents a remote storage server
@@ -313,12 +344,16 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		root = ""
 	}
 
+	if opt.RootURL == "" {
+		opt.RootURL = rootURL
+	}
+
 	f := &Fs{
 		name:      name,
 		root:      root,
 		opt:       *opt,
 		unAuth:    rest.NewClient(baseClient),
-		srv:       rest.NewClient(oAuthClient).SetRoot(rootURL),
+		srv:       rest.NewClient(oAuthClient).SetRoot(opt.RootURL),
 		ts:        ts,
 		pacer:     fs.NewPacer(ctx, pacer.NewGoogleDrive(pacer.MinSleep(minSleep))),
 		startTime: time.Now(),
