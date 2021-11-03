@@ -197,14 +197,6 @@ func init() {
 				// Fill in the scopes
 				driveConfig.Scopes = driveScopes(opt.Scope)
 
-				//Set Auth and Token URL
-				if opt.AuthURL != "" {
-					driveConfig.Endpoint.AuthURL = opt.AuthURL
-				}
-				if opt.TokenURL != "" {
-					driveConfig.Endpoint.TokenURL = opt.TokenURL
-				}
-
 				// Set the root_folder_id if using drive.appfolder
 				if driveScopesContainsAppFolder(driveConfig.Scopes) {
 					m.Set("root_folder_id", "appDataFolder")
@@ -648,7 +640,7 @@ having trouble with like many empty directories.
 			Advanced: true,
 			Default:  true,
 		}, {
-			Name:    "auth_url",
+			Name:    "drive_auth_url",
 			Default: "",
 			Help: `Google Auth URL
 
@@ -756,8 +748,8 @@ type Options struct {
 	FastListBugFix            bool                 `config:"fast_list_bug_fix"`
 	Enc                       encoder.MultiEncoder `config:"encoding"`
 	EnvAuth                   bool                 `config:"env_auth"`
-	AuthURL                   string               `config:"auth_url"`
-	TokenURL                  string               `config:"token_url"`
+	AuthURL                   string               `config:"drive_auth_url"`
+	TokenURL                  string               `config:"drive_token_url"`
 	UploadURL                 string               `config:"upload_url"`
 	ApiBasePath               string               `config:"api_base_path"`
 	ApiV2BasePath             string               `config:"api_v2_base_path"`
