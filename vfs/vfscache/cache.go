@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	sysdnotify "github.com/iguanesolutions/go-systemd/v5/notify"
 	"github.com/rclone/rclone/fs"
 	fscache "github.com/rclone/rclone/fs/cache"
 	"github.com/rclone/rclone/fs/config"
@@ -25,6 +24,7 @@ import (
 	"github.com/rclone/rclone/lib/diskusage"
 	"github.com/rclone/rclone/lib/encoder"
 	"github.com/rclone/rclone/lib/file"
+	"github.com/rclone/rclone/lib/systemd"
 	"github.com/rclone/rclone/vfs/vfscache/writeback"
 	"github.com/rclone/rclone/vfs/vfscommon"
 )
@@ -170,6 +170,18 @@ func (c *Cache) Stats() (out rc.Params) {
 	return out
 }
 
+// Queue returns info about the Cache
+func (c *Cache) Queue() (out rc.Params) {
+	out = make(rc.Params)
+	out["queue"] = c.writeback.Queue()
+	return out
+}
+
+// QueueSetExpiry updates the expiry of a single item in the upload queue
+func (c *Cache) QueueSetExpiry(id writeback.Handle, expiry time.Time) error {
+	return c.writeback.SetExpiry(id, expiry)
+}
+
 // createDir creates a directory path, along with any necessary parents
 func createDir(dir string) error {
 	return file.MkdirAll(dir, 0700)
@@ -212,7 +224,7 @@ func (c *Cache) createItemDir(name string) (string, error) {
 
 // getBackend gets a backend for a cache root dir
 func getBackend(ctx context.Context, parentPath string, name string, relativeDirPath string) (fs.Fs, error) {
-	path := fmt.Sprintf("%s/%s/%s", parentPath, name, relativeDirPath)
+	path := fmt.Sprintf(":local,encoding='%v':%s/%s/%s", encoder.OS, parentPath, name, relativeDirPath)
 	return fscache.Get(ctx, path)
 }
 
@@ -779,7 +791,7 @@ func (c *Cache) clean(kicked bool) {
 	c.mu.Unlock()
 
 	// Remove any files that are over age
-	c.purgeOld(c.opt.CacheMaxAge)
+	c.purgeOld(time.Duration(c.opt.CacheMaxAge))
 
 	// If have a maximum cache size...
 	if c.haveQuotas() {
@@ -814,7 +826,7 @@ func (c *Cache) clean(kicked bool) {
 	stats := fmt.Sprintf("objects %d (was %d) in use %d, to upload %d, uploading %d, total size %v (was %v)",
 		newItems, oldItems, totalInUse, uploadsQueued, uploadsInProgress, newUsed, oldUsed)
 	fs.Infof(nil, "vfs cache: cleaned: %s", stats)
-	if err = sysdnotify.Status(fmt.Sprintf("[%s] vfs cache: %s", time.Now().Format("15:04"), stats)); err != nil {
+	if err = systemd.UpdateStatus(fmt.Sprintf("[%s] vfs cache: %s", time.Now().Format("15:04"), stats)); err != nil {
 		fs.Errorf(nil, "vfs cache: updating systemd status with current stats failed: %s", err)
 	}
 }
@@ -830,7 +842,7 @@ func (c *Cache) cleaner(ctx context.Context) {
 	// Start cleaning the cache immediately
 	c.clean(false)
 	// Then every interval specified
-	timer := time.NewTicker(c.opt.CachePollInterval)
+	timer := time.NewTicker(time.Duration(c.opt.CachePollInterval))
 	defer timer.Stop()
 	for {
 		select {

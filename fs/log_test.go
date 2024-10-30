@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Check it satisfies the interfac(
+// Check it satisfies the interfaces
 var (
-	_ flagger      = (*LogLevel)(nil)
-	_ flaggerNP    = LogLevel(0)
+	_ Flagger      = (*LogLevel)(nil)
+	_ FlaggerNP    = LogLevel(0)
 	_ fmt.Stringer = LogValueItem{}
 )
 

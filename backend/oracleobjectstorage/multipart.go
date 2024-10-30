@@ -1,5 +1,4 @@
 //go:build !plan9 && !solaris && !js
-// +build !plan9,!solaris,!js
 
 package oracleobjectstorage
 
@@ -149,7 +148,7 @@ func (w *objectChunkWriter) WriteChunk(ctx context.Context, chunkNumber int, rea
 	}
 	md5sumBinary := m.Sum([]byte{})
 	w.addMd5(&md5sumBinary, int64(chunkNumber))
-	md5sum := base64.StdEncoding.EncodeToString(md5sumBinary[:])
+	md5sum := base64.StdEncoding.EncodeToString(md5sumBinary)
 
 	// Object storage requires 1 <= PartNumber <= 10000
 	ossPartNumber := chunkNumber + 1
@@ -280,7 +279,7 @@ func (w *objectChunkWriter) addMd5(md5binary *[]byte, chunkNumber int64) {
 	if extend := end - int64(len(w.md5s)); extend > 0 {
 		w.md5s = append(w.md5s, make([]byte, extend)...)
 	}
-	copy(w.md5s[start:end], (*md5binary)[:])
+	copy(w.md5s[start:end], (*md5binary))
 }
 
 func (o *Object) prepareUpload(ctx context.Context, src fs.ObjectInfo, options []fs.OpenOption) (ui uploadInfo, err error) {
@@ -295,7 +294,7 @@ func (o *Object) prepareUpload(ctx context.Context, src fs.ObjectInfo, options [
 	// Set the mtime in the metadata
 	modTime := src.ModTime(ctx)
 	// Fetch metadata if --metadata is in use
-	meta, err := fs.GetMetadataOptions(ctx, src, options)
+	meta, err := fs.GetMetadataOptions(ctx, o.fs, src, options)
 	if err != nil {
 		return ui, fmt.Errorf("failed to read metadata from source object: %w", err)
 	}
@@ -399,13 +398,17 @@ func (o *Object) prepareUpload(ctx context.Context, src fs.ObjectInfo, options [
 func (o *Object) createMultipartUpload(ctx context.Context, putReq *objectstorage.PutObjectRequest) (
 	uploadID string, existingParts map[int]objectstorage.MultipartUploadPartSummary, err error) {
 	bucketName, bucketPath := o.split()
-	f := o.fs
-	if f.opt.AttemptResumeUpload {
+	err = o.fs.makeBucket(ctx, bucketName)
+	if err != nil {
+		fs.Errorf(o, "failed to create bucket: %v, err: %v", bucketName, err)
+		return uploadID, existingParts, err
+	}
+	if o.fs.opt.AttemptResumeUpload {
 		fs.Debugf(o, "attempting to resume upload for %v (if any)", o.remote)
 		resumeUploads, err := o.fs.findLatestMultipartUpload(ctx, bucketName, bucketPath)
 		if err == nil && len(resumeUploads) > 0 {
 			uploadID = *resumeUploads[0].UploadId
-			existingParts, err = f.listMultipartUploadParts(ctx, bucketName, bucketPath, uploadID)
+			existingParts, err = o.fs.listMultipartUploadParts(ctx, bucketName, bucketPath, uploadID)
 			if err == nil {
 				fs.Debugf(o, "resuming with existing upload id: %v", uploadID)
 				return uploadID, existingParts, err

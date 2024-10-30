@@ -216,7 +216,10 @@ are supported.
 
 Note that we don't unmount the shared folder afterwards so the 
 --dropbox-shared-folders can be omitted after the first use of a particular 
-shared folder.`,
+shared folder.
+
+See also --dropbox-root-namespace for an alternative way to work with shared
+folders.`,
 			Default:  false,
 			Advanced: true,
 		}, {
@@ -237,6 +240,11 @@ shared folder.`,
 				encoder.EncodeDel |
 				encoder.EncodeRightSpace |
 				encoder.EncodeInvalidUtf8,
+		}, {
+			Name:     "root_namespace",
+			Help:     "Specify a different Dropbox namespace ID to use as the root for all paths.",
+			Default:  "",
+			Advanced: true,
 		}}...), defaultBatcherOptions.FsOptions("For full info see [the main docs](https://rclone.org/dropbox/#batch-mode)\n\n")...),
 	})
 }
@@ -253,6 +261,7 @@ type Options struct {
 	AsyncBatch    bool                 `config:"async_batch"`
 	PacerMinSleep fs.Duration          `config:"pacer_min_sleep"`
 	Enc           encoder.MultiEncoder `config:"encoding"`
+	RootNsid      string               `config:"root_namespace"`
 }
 
 // Fs represents a remote dropbox server
@@ -377,7 +386,7 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 	oldToken = strings.TrimSpace(oldToken)
 	if ok && oldToken != "" && oldToken[0] != '{' {
 		fs.Infof(name, "Converting token to new format")
-		newToken := fmt.Sprintf(`{"access_token":"%s","token_type":"bearer","expiry":"0001-01-01T00:00:00Z"}`, oldToken)
+		newToken := fmt.Sprintf(`{"access_token":%q,"token_type":"bearer","expiry":"0001-01-01T00:00:00Z"}`, oldToken)
 		err := config.SetValueAndSave(name, config.ConfigToken, newToken)
 		if err != nil {
 			return nil, fmt.Errorf("NewFS convert token: %w", err)
@@ -428,15 +437,15 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 		members := []*team.UserSelectorArg{&user}
 		args := team.NewMembersGetInfoArgs(members)
 
-		memberIds, err := f.team.MembersGetInfo(args)
+		memberIDs, err := f.team.MembersGetInfo(args)
 		if err != nil {
 			return nil, fmt.Errorf("invalid dropbox team member: %q: %w", opt.Impersonate, err)
 		}
-		if len(memberIds) == 0 || memberIds[0].MemberInfo == nil || memberIds[0].MemberInfo.Profile == nil {
+		if len(memberIDs) == 0 || memberIDs[0].MemberInfo == nil || memberIDs[0].MemberInfo.Profile == nil {
 			return nil, fmt.Errorf("dropbox team member not found: %q", opt.Impersonate)
 		}
 
-		cfg.AsMemberID = memberIds[0].MemberInfo.Profile.MemberProfile.TeamMemberId
+		cfg.AsMemberID = memberIDs[0].MemberInfo.Profile.MemberProfile.TeamMemberId
 	}
 
 	f.srv = files.New(cfg)
@@ -502,8 +511,11 @@ func NewFs(ctx context.Context, name, root string, m configmap.Mapper) (fs.Fs, e
 
 	f.features.Fill(ctx, f)
 
-	// If root starts with / then use the actual root
-	if strings.HasPrefix(root, "/") {
+	if f.opt.RootNsid != "" {
+		f.ns = f.opt.RootNsid
+		fs.Debugf(f, "Overriding root namespace to %q", f.ns)
+	} else if strings.HasPrefix(root, "/") {
+		// If root starts with / then use the actual root
 		var acc *users.FullAccount
 		err = f.pacer.Call(func() (bool, error) {
 			acc, err = f.users.GetCurrentAccount()
@@ -644,7 +656,7 @@ func (f *Fs) NewObject(ctx context.Context, remote string) (fs.Object, error) {
 	return f.newObjectWithInfo(ctx, remote, nil)
 }
 
-// listSharedFoldersApi lists all available shared folders mounted and not mounted
+// listSharedFolders lists all available shared folders mounted and not mounted
 // we'll need the id later so we have to return them in original format
 func (f *Fs) listSharedFolders(ctx context.Context) (entries fs.DirEntries, err error) {
 	started := false
@@ -946,6 +958,7 @@ func (f *Fs) purgeCheck(ctx context.Context, dir string, check bool) (err error)
 	if root == "/" {
 		return errors.New("can't remove root directory")
 	}
+	encRoot := f.opt.Enc.FromStandardPath(root)
 
 	if check {
 		// check directory exists
@@ -954,10 +967,9 @@ func (f *Fs) purgeCheck(ctx context.Context, dir string, check bool) (err error)
 			return fmt.Errorf("Rmdir: %w", err)
 		}
 
-		root = f.opt.Enc.FromStandardPath(root)
 		// check directory empty
 		arg := files.ListFolderArg{
-			Path:      root,
+			Path:      encRoot,
 			Recursive: false,
 		}
 		if root == "/" {
@@ -978,7 +990,7 @@ func (f *Fs) purgeCheck(ctx context.Context, dir string, check bool) (err error)
 
 	// remove it
 	err = f.pacer.Call(func() (bool, error) {
-		_, err = f.srv.DeleteV2(&files.DeleteArg{Path: root})
+		_, err = f.srv.DeleteV2(&files.DeleteArg{Path: encRoot})
 		return shouldRetry(ctx, err)
 	})
 	return err
@@ -1231,18 +1243,21 @@ func (f *Fs) About(ctx context.Context) (usage *fs.Usage, err error) {
 		return nil, err
 	}
 	var total uint64
+	used := q.Used
 	if q.Allocation != nil {
 		if q.Allocation.Individual != nil {
 			total += q.Allocation.Individual.Allocated
 		}
 		if q.Allocation.Team != nil {
 			total += q.Allocation.Team.Allocated
+			// Override used with Team.Used as this includes q.Used already
+			used = q.Allocation.Team.Used
 		}
 	}
 	usage = &fs.Usage{
-		Total: fs.NewUsageValue(int64(total)),          // quota of bytes that can be used
-		Used:  fs.NewUsageValue(int64(q.Used)),         // bytes in use
-		Free:  fs.NewUsageValue(int64(total - q.Used)), // bytes which can be uploaded before reaching the quota
+		Total: fs.NewUsageValue(int64(total)),        // quota of bytes that can be used
+		Used:  fs.NewUsageValue(int64(used)),         // bytes in use
+		Free:  fs.NewUsageValue(int64(total - used)), // bytes which can be uploaded before reaching the quota
 	}
 	return usage, nil
 }

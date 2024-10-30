@@ -31,8 +31,8 @@ func (bitsChoices) Choices() []BitsChoicesInfo {
 
 // Check it satisfies the interfaces
 var (
-	_ flagger   = (*bits)(nil)
-	_ flaggerNP = bits(0)
+	_ Flagger   = (*bits)(nil)
+	_ FlaggerNP = bits(0)
 )
 
 func TestBitsString(t *testing.T) {
@@ -78,6 +78,15 @@ func TestBitsSet(t *testing.T) {
 		}
 
 	}
+}
+
+func TestBitsIsSet(t *testing.T) {
+	b := bitA | bitB
+	assert.True(t, b.IsSet(bitA))
+	assert.True(t, b.IsSet(bitB))
+	assert.True(t, b.IsSet(bitA|bitB))
+	assert.False(t, b.IsSet(bitC))
+	assert.False(t, b.IsSet(bitA|bitC))
 }
 
 func TestBitsType(t *testing.T) {

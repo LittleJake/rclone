@@ -80,6 +80,11 @@ All done. Please go back to rclone.
 `
 )
 
+// OpenURL is used when rclone wants to open a browser window
+// for user authentication. It defaults to something which
+// should work for most uses, but may be overridden.
+var OpenURL = open.Start
+
 // SharedOptions are shared between backends the utilize an OAuth flow
 var SharedOptions = []fs.Option{{
 	Name:      config.ConfigClientID,
@@ -292,7 +297,7 @@ func (ts *TokenSource) Token() (*oauth2.Token, error) {
 	if err != nil {
 		return nil, fmt.Errorf("couldn't fetch token: %w", err)
 	}
-	changed = changed || (*token != *ts.token)
+	changed = changed || token.AccessToken != ts.token.AccessToken || token.RefreshToken != ts.token.RefreshToken || token.Expiry != ts.token.Expiry
 	ts.token = token
 	if changed {
 		// Bump on the expiry timer if it is set
@@ -376,6 +381,9 @@ func overrideCredentials(name string, m configmap.Mapper, origConfig *oauth2.Con
 	ClientID, ok := m.Get(config.ConfigClientID)
 	if ok && ClientID != "" {
 		newConfig.ClientID = ClientID
+		// Clear out any existing client secret since the ID changed.
+		// (otherwise it's impossible for a config to clear the secret)
+		newConfig.ClientSecret = ""
 		changed = true
 	}
 	ClientSecret, ok := m.Get(config.ConfigClientSecret)
@@ -713,8 +721,12 @@ func configSetup(ctx context.Context, id, name string, m configmap.Mapper, oauth
 
 	if !authorizeNoAutoBrowser {
 		// Open the URL for the user to visit
-		_ = open.Start(authURL)
-		fs.Logf(nil, "If your browser doesn't open automatically go to the following link: %s\n", authURL)
+		err := OpenURL(authURL)
+		if err != nil {
+			fs.Errorf(nil, "Failed to open browser automatically (%v) - please go to the following link: %s\n", err, authURL)
+		} else {
+			fs.Logf(nil, "If your browser doesn't open automatically go to the following link: %s\n", authURL)
+		}
 	} else {
 		fs.Logf(nil, "Please go to the following link: %s\n", authURL)
 	}

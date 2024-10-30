@@ -57,11 +57,6 @@ func NewLoggedBasicAuthenticator(realm string, secrets goauth.SecretProvider) *L
 func basicAuth(authenticator *LoggedBasicAuth) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// skip auth for unix socket
-			if IsUnixSocket(r) {
-				next.ServeHTTP(w, r)
-				return
-			}
 			// skip auth for CORS preflight
 			if r.Method == "OPTIONS" {
 				next.ServeHTTP(w, r)
@@ -123,11 +118,6 @@ func MiddlewareAuthBasic(user, pass, realm, salt string) Middleware {
 func MiddlewareAuthCustom(fn CustomAuthFn, realm string, userFromContext bool) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// skip auth for unix socket
-			if IsUnixSocket(r) {
-				next.ServeHTTP(w, r)
-				return
-			}
 			// skip auth for CORS preflight
 			if r.Method == "OPTIONS" {
 				next.ServeHTTP(w, r)
@@ -175,16 +165,11 @@ func MiddlewareCORS(allowOrigin string) Middleware {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// skip cors for unix sockets
-			if IsUnixSocket(r) {
-				next.ServeHTTP(w, r)
-				return
-			}
 
 			if allowOrigin != "" {
 				w.Header().Add("Access-Control-Allow-Origin", allowOrigin)
-				w.Header().Add("Access-Control-Request-Method", "POST, OPTIONS, GET, HEAD")
 				w.Header().Add("Access-Control-Allow-Headers", "authorization, Content-Type")
+				w.Header().Add("Access-Control-Allow-Methods", "COPY, DELETE, GET, HEAD, LOCK, MKCOL, MOVE, OPTIONS, POST, PROPFIND, PROPPATCH, PUT, TRACE, UNLOCK")
 			}
 
 			next.ServeHTTP(w, r)
@@ -195,6 +180,14 @@ func MiddlewareCORS(allowOrigin string) Middleware {
 // MiddlewareStripPrefix instantiates middleware that removes the BaseURL from the path
 func MiddlewareStripPrefix(prefix string) Middleware {
 	return func(next http.Handler) http.Handler {
-		return http.StripPrefix(prefix, next)
+		stripPrefixHandler := http.StripPrefix(prefix, next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Allow OPTIONS on the root only
+			if r.URL.Path == "/" && r.Method == "OPTIONS" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			stripPrefixHandler.ServeHTTP(w, r)
+		})
 	}
 }

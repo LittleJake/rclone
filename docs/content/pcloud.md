@@ -51,12 +51,13 @@ If your browser doesn't open automatically go to the following link: http://127.
 Log in and authorize rclone for access
 Waiting for code...
 Got code
---------------------
-[remote]
-client_id = 
-client_secret = 
-token = {"access_token":"XXX","token_type":"bearer","expiry":"0001-01-01T00:00:00Z"}
---------------------
+Configuration complete.
+Options:
+- type: pcloud
+- client_id:
+- client_secret:
+- token: {"access_token":"XXX","token_type":"bearer","expiry":"0001-01-01T00:00:00Z"}
+Keep this "remote" remote?
 y) Yes this is OK
 e) Edit this remote
 d) Delete this remote
@@ -86,7 +87,7 @@ To copy a local directory to a pCloud directory called backup
 
     rclone copy /home/source remote:backup
 
-### Modified time and hashes ###
+### Modification times and hashes
 
 pCloud allows modification times to be set on objects accurate to 1
 second.  These will be used to detect whether objects need syncing or
@@ -225,7 +226,7 @@ Properties:
 
 - Config:      encoding
 - Env Var:     RCLONE_PCLOUD_ENCODING
-- Type:        MultiEncoder
+- Type:        Encoding
 - Default:     Slash,BackSlash,Del,Ctl,InvalidUtf8,Dot
 
 #### --pcloud-root-folder-id
@@ -285,6 +286,17 @@ Properties:
 
 - Config:      password
 - Env Var:     RCLONE_PCLOUD_PASSWORD
+- Type:        string
+- Required:    false
+
+#### --pcloud-description
+
+Description of the remote.
+
+Properties:
+
+- Config:      description
+- Env Var:     RCLONE_PCLOUD_DESCRIPTION
 - Type:        string
 - Required:    false
 
